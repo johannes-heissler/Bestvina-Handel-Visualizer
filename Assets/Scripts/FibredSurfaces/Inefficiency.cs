@@ -34,7 +34,7 @@ public class Inefficiency: EdgePoint
 
             order = j;
             if (j == 0) { // the case where the two edges are already the same.
-                edgesToFold = new List<Strip> ();
+                edgesToFold = new List<Strip> { a };
                 initialSegmentToFold = 0;
                 return;
             }

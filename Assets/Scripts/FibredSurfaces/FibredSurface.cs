@@ -11,7 +11,7 @@ using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 public partial class FibredSurface : IPatchedDrawnsformable
 {
     public readonly FibredGraph graph;
-    public readonly GeodesicSurface surface;
+    public GeodesicSurface surface;
     
     /// <summary>
     /// The peripheral subgraph P contains one loop around every puncture of the surface apart from one orbit of punctures.
@@ -35,8 +35,9 @@ public partial class FibredSurface : IPatchedDrawnsformable
         set => Debug.LogError("The graph color should not be set.");
     }
     
-    public IEnumerable<IDrawnsformable> Patches =>
-        graph.Vertices.Concat<IDrawnsformable>(from edge in Strips select edge.Curve);
+    public IEnumerable<IDrawnsformable> Patches => isTrainTrack 
+        ? from edge in Strips select edge.Curve
+        : graph.Vertices.Concat<IDrawnsformable>(from edge in Strips select edge.Curve);
 
     public IEnumerable<UnorientedStrip> Strips => graph.Edges;
     
@@ -83,14 +84,13 @@ public partial class FibredSurface : IPatchedDrawnsformable
                     color: NextVertexColor()) // image is set below
             )
         );
-        var strips = 
-            from tuple in edgeDescriptions
-            let curve = tuple.Item1
-            let source = tuple.Item2
-            let target = tuple.Item3
-            let startVector = curve.StartVelocity.Coordinates(surface)
-            let endVector = -curve.EndVelocity.Coordinates(surface)
-            select new UnorientedStrip(
+        // Plain loop instead of a LINQ `let` query (IL2CPP/WebGL signature-mismatch crash, see CurveVisualizer).
+        var strips = new List<UnorientedStrip>();
+        foreach (var (curve, source, target, _) in edgeDescriptions)
+        {
+            var startVector = curve.StartVelocity.Coordinates(surface);
+            var endVector = -curve.EndVelocity.Coordinates(surface);
+            strips.Add(new UnorientedStrip(
                 curve,
                 junctions[source],
                 junctions[target],
@@ -99,8 +99,9 @@ public partial class FibredSurface : IPatchedDrawnsformable
                 startVector.Angle(),
                 endVector.Angle(),
                 addToGraph: true
-            );
-        
+            ));
+        }
+
         graph.AddVerticesAndEdgeRange(strips);
         
         // fix vertex targets

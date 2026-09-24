@@ -92,14 +92,20 @@ public partial class FibredSurface
     /// </summary>
     public IEnumerator<AlgorithmSuggestion> RemoveInefficiencyInSteps(Inefficiency p, bool fineSteps = false)
     {
-        if (p.order == 0)
+        if (p.order == 0 || p.edgesToFold.Count == Star(p.edgesToFold.First().Source).Count()) // backtrack or extremal valence 2 vertex
         {
             // The inefficiency is a back track or a valence two extremal vertex
             if (fineSteps)
-                yield return new AlgorithmSuggestion(PullTightString(GetLoosePositions(p.DgAfter())));
+                yield return new AlgorithmSuggestion(
+                    PullTightString(GetLoosePositions(p.DgAfter())) + (
+                       p.order != 0 ? $"This is a special case, as the inefficiency itself still has order { p.order}, but instead of folding the edges {p.edgesToFold.Select(e => e.ColorfulName).ToCommaSeparatedString()} we can just pull tight their origin which is an extremal vertex."
+                      : "" )
+                );
             PullTightAll(p.DgAfter());
             yield break;
         }
+
+            
 
         var initialSegment = p.initialSegmentToFold;
         var edgesToFold = p.edgesToFold;
@@ -169,8 +175,7 @@ public partial class FibredSurface
         
         var subEnumerator = RemoveInefficiencyInSteps(newInefficiency, fineSteps);
         while (subEnumerator.MoveNext())
-            if (fineSteps)
-                yield return subEnumerator.Current;
+            yield return subEnumerator.Current;
     }
 
 }

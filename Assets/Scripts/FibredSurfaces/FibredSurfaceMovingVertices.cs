@@ -188,7 +188,7 @@ public partial class FibredSurface
     public void MoveJunction(Strip e, float? length = null) => MoveJunction(e.Source, e.Curve, length ?? e.Curve.Length, e);
 
     
-    const float baseShiftStrength = 0.06f;
+    const float baseShiftStrength = 0.2f;
 
     public enum MoveJunctionShiftType
     {

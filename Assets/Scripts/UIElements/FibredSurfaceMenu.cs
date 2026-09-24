@@ -27,6 +27,8 @@ public class FibredSurfaceMenu : MonoBehaviour
     }
     
     [SerializeField] internal SurfaceMenu surfaceMenu;
+    private FibredSurface currentlyShownFibredSurface;
+
     
     [SerializeField] private Transform forwardButtonList;
     [SerializeField] private GameObject forwardButtonPrefab;
@@ -41,6 +43,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     [SerializeField] private ToggleGroup toggleGroup;
     [SerializeField] private UnityEvent<FibredSurface> OnFibredSurfaceChanged;
     private readonly AdjacencyGraph<MenuVertex, MenuEdge> fibredSurfaces = new();
+    private MenuVertex rootVertex;
     public FibredSurface FibredSurface => currentVertex?.fibredSurface;
     
     private MenuVertex currentVertex;
@@ -51,23 +54,39 @@ public class FibredSurfaceMenu : MonoBehaviour
     {
         this.surfaceMenu = surfaceMenu;
         OnFibredSurfaceChanged.AddListener(surfaceMenu.curveEditor.UpdateDropdown);
-        surfaceMenu.curveEditor.FibredSurfaceUpdated += () => UpdateUI();
-        MenuVertex vertex = new MenuVertex(fibredSurface, null);
+        surfaceMenu.curveEditor.FibredSurfaceUpdated += () => UpdateUI(true);
+        rootVertex = new MenuVertex(fibredSurface, null);
         fibredSurface.OnError += HandleError; // handle errors in the fibred surface
-        fibredSurfaces.AddVertex(vertex);
+        fibredSurfaces.AddVertex(rootVertex);
         
-        currentVertex = vertex;
+        currentVertex = rootVertex;
         OnFibredSurfaceChanged.Invoke(fibredSurface);
-        UpdateUI();
+        CreateUI();
+    }
+    
+    public void Deinitialize()
+    {
+        if (FibredSurface != null)
+            FibredSurface.OnError -= HandleError;
+        OnFibredSurfaceChanged.RemoveAllListeners();
+        fibredSurfaces.Clear();
+        currentVertex = null;
+        ClearUI();
+    }
+
+    // Called from UI
+    public void SelectRoot()
+    {
+        if (rootVertex != null)
+            UpdateSelectedSurface(rootVertex);
     }
 
 
     private void UpdateSelectedSurface(MenuVertex newVertex)
     {        
-        ClearUI();
         this.currentVertex = newVertex;
         OnFibredSurfaceChanged.Invoke(newVertex.fibredSurface);
-        UpdateUI();
+        UpdateUI(false);
     }
 
     private void ClearUI()
@@ -80,11 +99,20 @@ public class FibredSurfaceMenu : MonoBehaviour
             Destroy(child.gameObject);
         foreach (Transform child in optionList.transform.Cast<Transform>().ToList())
             Destroy(child.gameObject);
-        surfaceMenu.Display(FibredSurface, FibredSurface.surface.Name, remove: true);
+        if (currentlyShownFibredSurface != null)
+            surfaceMenu.Display(currentlyShownFibredSurface, currentlyShownFibredSurface.surface.Name, remove: true);
+        currentlyShownFibredSurface = null;
     }
 
     private IEnumerator suggestionCoroutine;
-    private void UpdateUI()
+
+    private void UpdateUI(bool reloadSuggestion = false)
+    {
+        ClearUI();
+        CreateUI(reloadSuggestion);
+    }
+    
+    private void CreateUI(bool reloadSuggestion = false)
     {
         StopCoroutine(nameof(LoadSuggestionLate));
         backButton.SetActive(ParentEdge() != null);
@@ -100,14 +128,14 @@ public class FibredSurfaceMenu : MonoBehaviour
         graphStatusText.text = FibredSurface.GraphString();
         if (suggestionCoroutine != null) 
             StopCoroutine(suggestionCoroutine);
-        suggestionCoroutine = LoadSuggestionLate();
+        suggestionCoroutine = LoadSuggestionLate(reloadSuggestion);
         StartCoroutine(suggestionCoroutine);
 
         
         LayoutRebuilder.ForceRebuildLayoutImmediate(GetComponent<RectTransform>());
     }
     
-    private void HandleError(string message)
+    public void HandleError(string message)
     {
         Debug.LogError(message);    
         if (algorithmCoroutine != null)
@@ -128,15 +156,17 @@ public class FibredSurfaceMenu : MonoBehaviour
     /// <summary>
     /// This is part of UpdateUI
     /// </summary>
-    IEnumerator LoadSuggestionLate()
+    IEnumerator LoadSuggestionLate(bool reload = false)
     {
         descriptionText.text = "Displaying new fibred surface...";
         yield return new WaitForEndOfFrame();
         surfaceMenu.Display(FibredSurface, FibredSurface.surface.Name);
+        currentlyShownFibredSurface = FibredSurface;
+        yield return new WaitForEndOfFrame();
         yield return new WaitForEndOfFrame();
         
         var suggestion = currentVertex.suggestion;
-        if (suggestion == null)
+        if (suggestion == null || reload)
         {
             descriptionText.text = "Loading next steps...";
             yield return new WaitForEndOfFrame();
@@ -224,7 +254,6 @@ public class FibredSurfaceMenu : MonoBehaviour
         }
         else
         {
-            ClearUI(); // also undraws the surface
             try
             {
                 // often takes several seconds. Blocks the UI.
@@ -235,8 +264,7 @@ public class FibredSurfaceMenu : MonoBehaviour
                 HandleError(e.Message);
                 return;
             }
-            currentVertex.suggestion = null; // reset the suggestion, so that it is recomputed
-            UpdateUI();
+            UpdateUI(reloadSuggestion: true); 
         }
 
     }
@@ -247,9 +275,12 @@ public class FibredSurfaceMenu : MonoBehaviour
         var selection = suggestion.options.FirstOrDefault();
         if (selection == default) // suggestion.IsFinished, but without multiple enumeration
             return false;
-        // todo: Performance. Also wait for a frame here?
         
-        DoSuggestion(suggestion.buttons.First(), new []{ suggestion.options.First() });
+        var firstButton = suggestion.buttons.First();
+        if (firstButton == FibredSurface.AlgorithmSuggestion.ignoreReducibleButton)
+            return false; // stop when reducibility is detected!
+        
+        DoSuggestion(firstButton, new []{ suggestion.options.First() });
         return true;
     }
     private Coroutine algorithmCoroutine;
@@ -311,10 +342,7 @@ public class FibredSurfaceMenu : MonoBehaviour
     {
         try
         {
-            if (text.StartsWith("P(") || text.StartsWith("Push(") ||  text.StartsWith("PointPush("))
-                gameObject.AddComponent<PointPushSlider>().Initialize( this, FibredSurface.ParsePointPush(text) );
-            else 
-                UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
+            UpdateGraphMap(FibredSurface.ParseMap(text), reset, mode);
         }
         catch (Exception e)
         {
@@ -394,12 +422,35 @@ public class FibredSurfaceMenu : MonoBehaviour
 
 
     #region Referenced from UI
-    private string graphMap = "";
-    public void SetGraphMap(string text) => graphMap = text;
+    private Dictionary<Strip, EdgePath> graphMap = null;
+    private string graphMapString = null;
+    public void SetGraphMap(string text)
+    {
+        graphMap = null;
+        graphMapString = text;
+    }
+
+    public void SetGraphMap(Dictionary<Strip, EdgePath> map)
+    {
+        graphMap = map;
+        graphMapString = null;
+    }
+
+    private void UpdateGraphMapFromVariables(GraphMapUpdateMode mode)
+    {
+        if (graphMap != null)
+            UpdateGraphMap(graphMap, reset: false, mode: mode);
+        else if (graphMapString != null)
+            UpdateGraphMap(graphMapString, reset: false, mode: mode);
+        else
+            throw new InvalidOperationException("No graph map is set.");
+    }
     
-    public void ReplaceWithGraphMap() => UpdateGraphMap(graphMap, reset: false, mode: GraphMapUpdateMode.Replace);
-    public void PrecomposeWithGraphMap() => UpdateGraphMap(graphMap, reset: false, mode: GraphMapUpdateMode.Precompose);
-    public void PostcomposeWithGraphMap() => UpdateGraphMap(graphMap, reset: false, mode: GraphMapUpdateMode.Postcompose);
+    public void ReplaceWithGraphMap() => UpdateGraphMapFromVariables(GraphMapUpdateMode.Replace);
+    
+    public void PrecomposeWithGraphMap() => UpdateGraphMapFromVariables(GraphMapUpdateMode.Precompose);
+    
+    public void PostcomposeWithGraphMap() => UpdateGraphMapFromVariables(GraphMapUpdateMode.Postcompose);
     #endregion
 
 }

@@ -56,7 +56,7 @@ public partial class ModelSurface : GeodesicSurface
     public readonly List<ModelSurfaceVertex> vertices = new();
     public readonly List<PolygonSide> sidesAsParameters;
 
-    public static readonly Dictionary<GeometryType, GeodesicSurface> BaseGeometrySurfaces = new()
+    public static readonly IReadOnlyDictionary<GeometryType, GeodesicSurface> baseGeometrySurfaces = new Dictionary<GeometryType, GeodesicSurface>
     {
         [GeometryType.Flat] = new EuclideanPlane(),
         [GeometryType.HyperbolicDisk] = new HyperbolicPlane(diskModel: true),
@@ -67,7 +67,7 @@ public partial class ModelSurface : GeodesicSurface
     public override Vector3 MinimalPosition { get; }
     public override Vector3 MaximalPosition { get; }
 
-    public GeodesicSurface GeometrySurface => BaseGeometrySurfaces[geometryType]; // Euclidean or Hyperbolic plane.
+    public GeodesicSurface GeometrySurface => baseGeometrySurfaces[geometryType]; // Euclidean or Hyperbolic plane.
 
     public ModelSurface Copy(string name) => new(name, Genus, punctures.Count, geometryType, sidesAsParameters);
 
@@ -165,16 +165,9 @@ public partial class ModelSurface : GeodesicSurface
 
             if (vertexIndex > 4 * sides.Count)
                 throw new Exception("what the heck?");
-            var oldEdge = (
-                from polygonVertex in polygonVertices
-                let edgesAtThisPolygonVertex = polygonVertex.Item2
-                let unassignedEdge = edgesAtThisPolygonVertex.FirstOrDefault(
-                    edge => edge.vertexIndex == -1
-                )
-                select unassignedEdge
-            ).FirstOrDefault(
-                edge => edge != null
-            );
+            var oldEdge = polygonVertices
+                .Select(polygonVertex => polygonVertex.Item2.FirstOrDefault(edge => edge.vertexIndex == -1))
+                .FirstOrDefault(edge => edge != null);
 
             if (oldEdge == null) // all edges have been assigned to a vertex
                 break;
@@ -256,14 +249,16 @@ public partial class ModelSurface : GeodesicSurface
         var center = polygonVertices.Select(pair => pair.Item1).Aggregate((a, b) => a + b) / polygonVertices.Count;
         var radius = polygonVertices.Select(pair => pair.Item1).Max(pos => Vector3.Distance(pos, center));
 
-        this.punctures.AddRange((
-                from _ in Enumerable.Range(0, 100 * (punctures - this.punctures.Count))
-                let randomPuncture = ClampPoint((Vector3)Random.insideUnitCircle * radius + center, 0.01f)
-                // todo: this MUST NOT be disjoint from the surface. Also it should be approximately the size of the surface
-                where randomPuncture != null
-                select randomPuncture
-            ).Take(punctures - this.punctures.Count)
-        );
+        // Plain loop instead of a LINQ `let` query (IL2CPP/WebGL signature-mismatch crash, see CurveVisualizer).
+        int missingPunctures = punctures - this.punctures.Count;
+        for (int attempt = 0, added = 0; attempt < 100 * missingPunctures && added < missingPunctures; attempt++)
+        {
+            var randomPuncture = ClampPoint((Vector3)Random.insideUnitCircle * radius + center, 0.01f);
+            // todo: this MUST NOT be disjoint from the surface. Also it should be approximately the size of the surface
+            if (randomPuncture == null) continue;
+            this.punctures.Add(randomPuncture);
+            added++;
+        }
 
         // if (geometryType is GeometryType.HyperbolicDisk or GeometryType.HyperbolicPlane)
         // {
@@ -310,6 +305,7 @@ public partial class ModelSurface : GeodesicSurface
             endPoint = ClampPoint(endPoint.Position, 0.001f);
         if (endPoint is null)
             throw new Exception("The end point is not on the surface.");
+        surface ??= this;
 
         var centerPoint = DistanceMinimizer(startPoint, endPoint, GeometrySurface);
         if (centerPoint == null)

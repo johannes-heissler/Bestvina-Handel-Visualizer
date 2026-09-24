@@ -2,24 +2,92 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.UIElements;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
 using FibredGraph = QuikGraph.UndirectedGraph<Junction, UnorientedStrip>;
 
+public class Parameter
+{
+    public static Parameter FromString(string str)
+    {
+        return SurfaceParameter.FromString(str) as Parameter ?? GraphParameter.FromString(str);
+    }
+    
+}
+
+public class GraphParameter : Parameter
+{
+    public readonly IReadOnlyList<string> essentialBoundaryWords, peripheralBoundaryWords;
+    public readonly string map;
+
+    public GraphParameter(IReadOnlyList<string> essentialBoundaryWords, IReadOnlyList<string> peripheralBoundaryWords, string map)
+    {
+        this.essentialBoundaryWords = essentialBoundaryWords;
+        this.peripheralBoundaryWords = peripheralBoundaryWords;
+        this.map = map;
+    }
+    
+    public static GraphParameter FromString(string str)
+    {
+        string[] GoodSplit(string str, params char[] separators) => str.Split(separators).Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+        
+        var parts = GoodSplit(str, ';', '\n');
+        if (parts.Length == 0)
+            return null;
+        var essentialBoundaryWords = new List<string>();
+        var peripheralBoundaryWords = new List<string>();
+        var mapString = "";
+        foreach (var part in parts)
+        {   
+            var end = part.IndexOfAny(new[] { '/', '#', '%' });
+            if (end == -1)
+                end = part.Length;
+            var start = part.IndexOfAny(new[] { ':' });
+            if (start >= end)
+                start = -1;          
+            var content = part[(start + 1).. end];
+            var comments = part[..(start + 1)] + part[(end)..];
+            
+            if (comments.Contains("ess") ) 
+                essentialBoundaryWords.AddRange(GoodSplit(content, ','));
+            else if (comments.Contains("per") ) 
+                peripheralBoundaryWords.AddRange(GoodSplit(content, ','));
+            else if (comments.Contains("map") || content.Contains("->") || content.Contains("↦") || content.Contains("="))
+                mapString += ",\n" + content; // gets split in ParseMap
+            else if (essentialBoundaryWords.Count == 0)
+                essentialBoundaryWords.AddRange(GoodSplit(content, ','));
+            else if (peripheralBoundaryWords.Count == 0)
+                peripheralBoundaryWords.AddRange(GoodSplit(content, ','));
+            else
+                throw new ArgumentException($"Could not parse the part \"{part}\" of the input string \"{str}\". Please specify whether it is essential or peripheral boundary words, or a map.");
+        }
+        return new GraphParameter (essentialBoundaryWords, peripheralBoundaryWords, mapString);
+    }
+}
 
 [Serializable]
-public struct SurfaceParameter
+public class SurfaceParameter : Parameter
 {
-    // todo: Feature. this should be split into two tpyes:
+    // todo: Feature. this should be split into multiple tpyes:
     // One being basically the input for the constructor of ModelSurface
     // One describing embedded surfaces, e.g. where the genera are. This affects only the embeddings (homeomorphisms)
-    public int genus, punctures, peripheralPunctures;
-    public bool connectedSumEmbedding;
+    public readonly int genus, punctures, peripheralPunctures;
+    public readonly bool connectedSumEmbedding;
+    
+    public SurfaceParameter(int genus, int punctures, int peripheralPunctures = 0, bool connectedSumEmbedding = false)
+    {
+        this.genus = genus;
+        this.punctures = punctures;
+        this.peripheralPunctures = peripheralPunctures;
+        this.connectedSumEmbedding = connectedSumEmbedding;
+    }
 
     public static SurfaceParameter FromString(string str)
     {
-        int genus = 1, punctures = 0, peripheralPunctures = 0;
+        int genus = -1, punctures = 0, peripheralPunctures = 0;
         bool connectedSumEmbedding = false;
         foreach (var st in str.Split(','))
         {
@@ -33,7 +101,10 @@ public struct SurfaceParameter
             if (s.EndsWith("#"))
                 connectedSumEmbedding = true;
         }
-        return new() { genus = genus, punctures = punctures, peripheralPunctures = peripheralPunctures, connectedSumEmbedding = connectedSumEmbedding };
+
+        if (genus < 0)
+            return null; 
+        return new SurfaceParameter(genus, punctures, peripheralPunctures, connectedSumEmbedding);
     }
 }
 
@@ -66,6 +137,152 @@ public static class SurfaceGenerator
         return modelSurface;
     }
 
+    private class EdgeNameAppearance
+    {
+        public bool Lowercase { get; set; }
+        public bool Uppercase { get; set; }
+
+        public bool Okay => Lowercase && Uppercase;
+    }
+
+    /// <summary>
+    /// Constructs the ribbon graph from the boundary words. 
+    /// </summary>
+    /// <param name="fibredSurface">This is necessary so that the edges and vertices can refer to it. </param>
+    /// <param name="essentialBoundaryWords"></param>
+    /// <param name="peripheralBoundaryWords"></param>
+    /// <param name="peripheralEdges"></param>
+    /// <param name="boundaryWords">A list of boundary words, written with spaces or not containing any spaces</param>
+    /// <returns>A FibredGraph, with the edges and vertices placed at Vector3.zero and no reference to a fibred Surface</returns>
+    /// <exception cref="ArgumentException"></exception>
+    public static void GraphFromBoundaryWords(FibredSurface fibredSurface,
+        IReadOnlyList<string> essentialBoundaryWords, IReadOnlyList<string> peripheralBoundaryWords) 
+    {
+        
+        var boundaryWordList = new List<List<string>>();
+        var edgeCounts = new Dictionary<string, EdgeNameAppearance>();
+
+        int essentialBoundaryCount = essentialBoundaryWords.Count;
+        foreach (var boundaryWord in essentialBoundaryWords.Concat(peripheralBoundaryWords))
+        {
+            var b = (
+                boundaryWord.Trim().Contains(' ')
+                    ? boundaryWord.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    : boundaryWord.Select(c => c.ToString())
+            ).ToList();
+            if (b.Count == 0)
+                throw new ArgumentException("Boundary words must not be empty.");
+            boundaryWordList.Add(b);
+
+            foreach (var edgeLabel in b)
+            {
+                var key = edgeLabel.ToLower();
+                if (!edgeCounts.TryGetValue(key, out var counts))
+                    counts = edgeCounts[key] = new();
+
+                if (char.IsUpper(edgeLabel[0]) && !counts.Uppercase)
+                    counts.Uppercase = true;
+                else if (char.IsLower(edgeLabel[0]) && !counts.Lowercase)
+                    counts.Lowercase = true;
+                else
+                    throw new ArgumentException($"Edge {edgeLabel} appears more than once in the boundary words.");
+            }
+        }
+
+        if (!edgeCounts.Values.All(c => c.Okay))
+            throw new ArgumentException(
+                "Each edge must appear in the boundary words exactly once as lowercase and once as uppercase.");
+
+        // Step 2: Define the cyclic order (σ)
+        var edges = new Dictionary<string, UnorientedStrip>();
+        var sigma = new Dictionary<Strip, Strip>();
+        Strip previous = null;
+        var temporaryJunction = new Junction(fibredSurface, new BasicPoint(Vector3.zero), name: "temp", color: Color.black);
+        
+        foreach (List<string> b in boundaryWordList)
+        {
+            essentialBoundaryCount--;
+            foreach (var c in b)
+            {
+                var isReversed = char.IsUpper(c[0]);
+                var key = c.ToLower();
+                
+                if (!edges.TryGetValue(key, out var edge))
+                {
+                    edges[key] = edge = new UnorientedStrip(new BasicParametrizedCurve(key,
+                            1f,
+                            fibredSurface.surface,
+                            t => Vector3.zero,
+                            t => Vector3.zero),
+                        temporaryJunction,
+                        temporaryJunction,
+                        null,
+                        fibredSurface,
+                        0,
+                        0);
+                    if (essentialBoundaryCount < 0)
+                        fibredSurface.peripheralSubgraph.Add(edge);
+                }
+
+                var current = isReversed ? edge.Reversed() : edge;
+
+                if (previous != null) 
+                    sigma[previous.Reversed()] = current;
+
+                previous = current;
+            }
+
+            // Close the cyclic order
+            sigma[previous!.Reversed()] = edges[b[0].ToLower()];
+        }
+
+        // Step 3: Find vertices (orbits of σ)
+        var visited = new HashSet<Strip>();
+        
+        foreach (var edge in sigma.Keys)
+        {
+            if (visited.Contains(edge)) continue;
+
+            var vertex = new Junction(
+                fibredSurface, 
+                new BasicPoint(Vector3.zero)
+            );
+            
+            var current = edge;
+            int orderIndex = 0;
+            do
+            {
+                visited.Add(current);
+                current.Source = vertex;
+                current.OrderIndexStart = orderIndex++;
+                current = sigma[current];
+            } while (!visited.Contains(current));
+        }
+
+        // fibredGraph.AddVerticesAndEdgeRange(edges.Values); // happened in set_Source...
+        fibredSurface.graph.RemoveVertex(temporaryJunction); // should never have been added?
+    }
+
+
+    public static FibredSurface SurfaceFromBoundaryWords(GraphParameter graphParameter)
+    {
+        var fibredSurface = new FibredSurface(
+            new FibredGraph(true),
+            ModelSurface.baseGeometrySurfaces[ GeometryType.HyperbolicDisk ]
+            // this is a necessary placeholder. We will have to update the surface together with the curves.
+        );
+        GraphFromBoundaryWords(fibredSurface, graphParameter.essentialBoundaryWords, graphParameter.peripheralBoundaryWords);
+        var eulerCharacteristic = fibredSurface.graph.VertexCount - fibredSurface.graph.EdgeCount;
+        var punctures = graphParameter.essentialBoundaryWords.Count + graphParameter.peripheralBoundaryWords.Count;
+        
+        var genus = (2 - eulerCharacteristic - punctures) / 2; // this is an integer >= 0 because every ribbon graph determines a surface.
+        var surface = GenerateGeodesicSurface(genus, punctures, $"Surface with genus {genus} and {punctures} punctures");
+        fibredSurface.surface = surface; 
+        // todo: also create new curves in this surface. They don't even reference the correct surface (CheckGraphMapIntegrity)
+        fibredSurface.SetMap(graphParameter.map, GraphMapUpdateMode.Replace);
+        return fibredSurface;
+    }
+    
 
     /// <summary>
     /// Creates an ideal hyperbolic model surface with corresponding dual spine and lassos around punctures, also added at ideal vertices 
@@ -126,8 +343,8 @@ public static class SurfaceGenerator
                     t => new Vector3(MathF.Cos(t), MathF.Sin(t), 0),
                     t => new Vector3(-MathF.Sin(t), MathF.Cos(t), 0)
                 ) { Color = color };
-                var edge = new UnorientedStrip(circle, junction, junction, EdgePath.Empty, fibredSurface, 0, 1, newColor: assignNewColor, newName: label is null, addToGraph: true);
-                edge.EdgePath = new NormalEdgePath(edge);
+                var edge = new UnorientedStrip(circle, junction, junction, null, fibredSurface, 0, 1, newColor: assignNewColor, newName: label is null, addToGraph: true);
+                // edge.EdgePath = new NormalEdgePath(edge);
                 break;
             }
             default:
@@ -139,10 +356,14 @@ public static class SurfaceGenerator
                 var peripheralCusps = cusps.OrderBy(v => v.boundaryCurves.Count).Take(peripheralPunctures).ToList();
 
                 var sidesToTraverse = modelSurface.sides.ToList();
-                foreach (var vertex in peripheralCusps) 
-                    sidesToTraverse.Remove(vertex.boundaryCurves.FirstOrDefault(c => char.IsDigit(c.Name[^1])) ?? vertex.boundaryCurves.Last()); 
-                
-                
+                foreach (var vertex in peripheralCusps)
+                {
+                    var sidesTraversedByPeripheralLoop = vertex.boundaryCurves.SelectMany(c => new[]{c, c.other, c.ReverseModelSide(), c.other.ReverseModelSide()}).Where(sidesToTraverse.Contains).ToArray();
+                    var sideToIgnore = sidesTraversedByPeripheralLoop.FirstOrDefault(c => char.IsDigit(c.Name[^1])) ?? sidesToTraverse[0];
+                    sidesToTraverse.Remove(sideToIgnore);
+                }
+
+
                 var centerPoint = new BasicPoint(Vector3.zero); 
                 var centerJunction = new Junction(fibredSurface, centerPoint);
                 centerJunction.image = centerJunction; 
@@ -162,10 +383,10 @@ public static class SurfaceGenerator
                     
                     var secondPart = modelSurface.GetBasicGeodesic(point2, centerPoint, nameOfEdge);
                     var curve = firstPart.Concatenate(secondPart);
-                    var edge = new UnorientedStrip(curve, centerJunction, centerJunction, EdgePath.Empty, fibredSurface, curve.StartVelocity.vector.Angle(), (- curve.EndVelocity.vector).Angle(), addToGraph: true);
+                    var edge = new UnorientedStrip(curve, centerJunction, centerJunction, null, fibredSurface, curve.StartVelocity.vector.Angle(), (- curve.EndVelocity.vector).Angle(), addToGraph: true);
                     edge.Name = nameOfEdge;
                     edge.Color = side.Color;
-                    edge.EdgePath = new NormalEdgePath(edge);
+                    // edge.EdgePath = new NormalEdgePath(edge);
                     if (char.IsDigit(nameOfEdge[^1]))
                         edgesToRename.Add(edge);
                 }
@@ -180,12 +401,12 @@ public static class SurfaceGenerator
                     
                     var curveToJunction = modelSurface.GetBasicGeodesic(centerPoint, peripheralCurve.StartPosition, "random curve name");
                     
-                    var edgeToJunction = new UnorientedStrip(curveToJunction, centerJunction, junction, EdgePath.Empty, fibredSurface, curveToJunction.StartVelocity.vector.Angle(), 0, newColor: true, addToGraph: true, newName: true);
-                    edgeToJunction.EdgePath = new NormalEdgePath(edgeToJunction);
+                    var edgeToJunction = new UnorientedStrip(curveToJunction, centerJunction, junction, null, fibredSurface, curveToJunction.StartVelocity.vector.Angle(), 0, newColor: true, addToGraph: true, newName: true);
+                    // edgeToJunction.EdgePath = new NormalEdgePath(edgeToJunction);
                     
                     peripheralCurve.Name = cuspName;
-                    var peripheralEdge = new UnorientedStrip(peripheralCurve, junction, junction, EdgePath.Empty, fibredSurface, 1, 2, addToGraph: true, newColor: true);
-                    peripheralEdge.EdgePath = new NormalEdgePath(peripheralEdge);
+                    var peripheralEdge = new UnorientedStrip(peripheralCurve, junction, junction, null, fibredSurface, 1, 2, addToGraph: true, newColor: true);
+                    // peripheralEdge.EdgePath = new NormalEdgePath(peripheralEdge);
                     peripheralSubgraph.Add(peripheralEdge);
                     
                     junction.Color = peripheralEdge.Color;
@@ -615,34 +836,46 @@ public static class SurfaceGenerator
         }
     }
 
-    public static (AbstractSurface, FibredSurface) CreateSurface(IEnumerable<SurfaceParameter> parameters)
+    public static (AbstractSurface, FibredSurface) CreateSurface(Parameter dparameter)
     {
-        var p = parameters.First();
+
         FibredSurface fibredSurface = null;
-        if (p.connectedSumEmbedding)
+        switch (dparameter)
         {
-            var parametricSurface = GenusGSurfaceConnectedSumFlat(p.genus, p.punctures);
-            var embedding = parametricSurface.embedding;
-            if (p.genus == 1 && p.punctures == 1 && p.peripheralPunctures == 0)
-            {
-                fibredSurface = SpineForSurface(p.genus, p.punctures, p.peripheralPunctures);
-                embedding = new Homeomorphism(fibredSurface.surface, parametricSurface,
-                    embedding.f, embedding.fInv, embedding.df,
-                    embedding.dfInv, "T ⊆ R³"); 
-                // change source of embedding. This depends on me not changing the implementation...
-                // Both are FlatTorusModelSurface(...)
-            }
-            else
-            {
-                // todo: Feature, a spine for the connected sum model surface.
-            }
-            return (new AbstractSurface(embedding), fibredSurface);
+            case GraphParameter graphParameter:
+                fibredSurface = SurfaceFromBoundaryWords(graphParameter);
+                return (new AbstractSurface(fibredSurface.surface), fibredSurface);
+            case SurfaceParameter surfaceParameter:
+                
+                if (surfaceParameter.connectedSumEmbedding)
+                {
+                    var parametricSurface = GenusGSurfaceConnectedSumFlat(surfaceParameter.genus, surfaceParameter.punctures);
+                    var embedding = parametricSurface.embedding;
+                    if (surfaceParameter.genus == 1 && surfaceParameter.punctures == 1 && surfaceParameter.peripheralPunctures == 0)
+                    {
+                        fibredSurface = SpineForSurface(surfaceParameter.genus, surfaceParameter.punctures,
+                            surfaceParameter.peripheralPunctures);
+                        embedding = new Homeomorphism(fibredSurface.surface, parametricSurface,
+                            embedding.f, embedding.fInv, embedding.df,
+                            embedding.dfInv, "T ⊆ R³");
+                        // change source of embedding. This depends on me not changing the implementation...
+                        // Both are FlatTorusModelSurface(...)
+                    }
+                    else
+                    {
+                        // todo: Feature, a spine for the connected sum model surface.
+                    }
+
+                    return (new AbstractSurface(embedding), fibredSurface);
+                }
+
+                fibredSurface = SpineForSurface(surfaceParameter.genus, surfaceParameter.punctures, surfaceParameter.peripheralPunctures);
+                 return (new AbstractSurface(fibredSurface.surface), fibredSurface);
+            
+            default: 
+                throw new ArgumentException("Unknown parameter type");
         }
 
-        fibredSurface = SpineForSurface(p.genus, p.punctures, p.peripheralPunctures);
-        return (new AbstractSurface(fibredSurface.surface), fibredSurface);
-        // todo: Feature: Make the parameters useful (or delete them)
-        
     }
 
     private static ParametricSurface GenusGSurfaceConnectedSumFlat(int genus, int punctures)
@@ -665,5 +898,6 @@ public static class SurfaceGenerator
     }
 
     private const float τ = MathF.PI * 2;
+    
     
 }

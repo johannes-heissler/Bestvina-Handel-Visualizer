@@ -13,11 +13,9 @@ public abstract class GeodesicSurface: Surface
     public virtual Curve GetPathFromWaypoints(IEnumerable<Point> points, string name)
     {
         var pointArray = points.ToArray();
-        var geodesicSegments = 
-            from i in Enumerable.Range(0, pointArray.Length - 1)
-            let start = pointArray[i]
-            let end = pointArray[i+1]
-            select GetGeodesic(start, end, name);
+        var geodesicSegments = new List<Curve>(pointArray.Length - 1);
+        for (int i = 0; i < pointArray.Length - 1; i++)
+            geodesicSegments.Add(GetGeodesic(pointArray[i], pointArray[i + 1], name));
         
         return new ConcatenatedCurve(geodesicSegments, name, smoothed: true);
         // done: shouldn't smooth at the visual jump points, only at the actual concatenation points above. This could be done with "ignoreSubConcatenatedCurves", as we do, but only if we reintroduce nested concatenated curves. Currently, there is no distinction between the kinds of concatenations; Apart from the "angle jump" property of singular points, if it works
@@ -112,8 +110,8 @@ public abstract class GeodesicSurface: Surface
         { // todo: check
             float dtdl = lastTimeInterval / lastLength;
 
-            if (length > lengths[^1])
-                return (res * lengths.Count + (length - lengths[^1]) * dtdl, dtdl);
+            if (length >= lengths[^1])
+                return (res * (lengths.Count - 1) + (length - lengths[^1]) * dtdl, dtdl);
             
             int i = 1;
             while (length > lengths[i]) 

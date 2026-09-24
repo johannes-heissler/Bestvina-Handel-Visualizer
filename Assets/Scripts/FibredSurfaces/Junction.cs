@@ -15,17 +15,19 @@ public partial class Junction: PatchedDrawnsformable, IEquatable<Junction>
     private static int _lastId = 0;
     private readonly int id = _lastId++;
     
-    public Junction(FibredSurface fibredSurface, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null) :
+    public Junction(FibredSurface fibredSurface, IEnumerable<IDrawnsformable> drawables, string name = null, Junction image = null, Color? color = null, bool addToGraph = false) :
         base(drawables)
     {
         this.fibredSurface = fibredSurface;
-        this.image = image;
-        if (color.HasValue) Color = color.Value;
-        Name = name ?? fibredSurface.NextVertexName();
+        this.image = image ?? this;
+        Color = color ?? fibredSurface?.NextVertexColor() ?? FibredSurface.vertexColors[id % FibredSurface.vertexColors.Count];
+        Name = name ?? fibredSurface?.NextVertexName() ?? $"v{id}";
+        if (addToGraph && fibredSurface != null)
+            fibredSurface.graph.AddVertex(this);
     }
     
-    public Junction(FibredSurface fibredSurface, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null) : 
-        this(fibredSurface, new[] {drawable}, name, image, color)
+    public Junction(FibredSurface fibredSurface, IDrawnsformable drawable, string name = null, Junction image = null, Color? color = null, bool addToGraph = false) : 
+        this(fibredSurface, new[] {drawable}, name, image, color, addToGraph)
     { }
 
     public Point Position => Patches.FirstOrDefault(v => v is Point) as Point;

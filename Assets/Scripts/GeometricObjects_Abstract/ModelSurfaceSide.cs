@@ -23,7 +23,7 @@ public partial class ModelSurfaceSide: Curve
 
     public ModelSurfaceSide(ModelSurface.PolygonSide side, GeometryType geometryType, ModelSurface surface) :
         this(
-            ModelSurface.BaseGeometrySurfaces[geometryType]
+            ModelSurface.baseGeometrySurfaces[geometryType]
                 .GetGeodesic( side.start, side.end, side.label, surface),
             side.rightIsInside
         )

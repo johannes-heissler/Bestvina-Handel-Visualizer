@@ -4,7 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.Serialization;
 using Random = System.Random;
 
 public class MainMenu: MonoBehaviour
@@ -13,7 +15,7 @@ public class MainMenu: MonoBehaviour
     [SerializeField] private GameObject surfaceMenuPrefab;
     public List<SurfaceMenu> surfaceMenus = new();
     [SerializeField] private RectTransform canvas;
-    [SerializeField] private string surfaceParameters;
+    [FormerlySerializedAs("surfaceParameters")] [SerializeField] private string parameters;
     [SerializeField] private CameraManager cameraManager;
     [SerializeField] public MenuMode mode = MenuMode.AddPoint;
     [SerializeField] private TMP_Dropdown curveDropdown;
@@ -74,7 +76,7 @@ public class MainMenu: MonoBehaviour
                 // collapse the invariant subforest corresponding to b
                 var algorithmSuggestion = fibredSurface.NextSuggestion();
                 fibredSurface.ApplySuggestion(new [] {
-                      algorithmSuggestion.options.First(option => option.Item2.Contains(bb.ColorfulName)).Item1
+                      algorithmSuggestion.options.First(option => option.Item2.Contains(">b<")).Item1
                     },
                 algorithmSuggestion.buttons.FirstOrDefault()
                 );
@@ -83,6 +85,34 @@ public class MainMenu: MonoBehaviour
                     ["a"] = "β c γ C a",
                     ["c"] = "β c γ C a α A c Γ C β c γ C a α A c Γ",
                 });
+                break;
+            case "Bestvina-Handel example 6.3.":
+                Initialize("g=0, p=5, P=0", showDeckTransformations, true);
+                
+                // var aa = fibredSurface.Strips.First(strip => strip.Name == "a");
+                // var bb = fibredSurface.Strips.First(strip => strip.Name == "b");
+                // var cc = fibredSurface.Strips.First(strip => strip.Name == "c");
+                // var α = fibredSurface.Strips.First(strip => strip.Name == "α");
+                // var β = fibredSurface.Strips.First(strip => strip.Name == "β");
+                // var γ = fibredSurface.Strips.First(strip => strip.Name == "γ");
+                // α.Name = "γ";
+                // γ.Name = "α";
+                // aa.Name = "c";
+                // cc.Name = "a";
+                //
+                //
+                // // collapse the invariant subforest corresponding to b
+                // var algorithmSuggestion = fibredSurface.NextSuggestion();
+                // fibredSurface.ApplySuggestion(new [] {
+                //       algorithmSuggestion.options.First(option => option.Item2.Contains(">b<")).Item1
+                //     },
+                // algorithmSuggestion.buttons.FirstOrDefault()
+                // );
+                // fibredSurfaceMenu.UpdateGraphMap(new Dictionary<string, string>
+                // {
+                //     ["a"] = "β c γ C a",
+                //     ["c"] = "β c γ C a α A c Γ C β c γ C a α A c Γ",
+                // });
                 break;
             case "Point Push example":
                 Initialize("g=2,p=1,P=0", showDeckTransformations, true);
@@ -172,17 +202,50 @@ public class MainMenu: MonoBehaviour
                         yield return null; // waits for next frame
                     }
                 }
+            break;
+            case "Random mapping class in genus 2":
+                Initialize("g=2,p=1,P=0", showDeckTransformations, true);
+                // Bestvina-Handel ex. 6.1. setup
+                var c2 = fibredSurface.Strips.First(strip => strip.Name == "c");
+                var d2 = fibredSurface.Strips.First(strip => strip.Name == "d");
+                c2.ReplaceWithInverseEdge();
+                c2.Name = "d";
+                d2.ReplaceWithInverseEdge();
+                d2.Name = "c";
+                var random = new Random();
+                var maps = new List<string>()
+                {
+                    "c -> c d", "c -> c D",
+                    "b -> a b", "b -> A b",
+                    "d -> C d", "d -> c d",
+                    "a -> a B", "a -> a b",
+                    "a -> c B a, d -> d C b", "a -> b C a, d -> d B c",
+                };
+                for (int i = 0; i < 10; i++)
+                {
+                    fibredSurfaceMenu.UpdateGraphMap(maps[random.Next(maps.Count)], mode: GraphMapUpdateMode.Postcompose);
+                }
+                break;
         }
         
     }
     
-    public void Initialize(string surfaceParameters = null, bool showDeckTransformations = false, bool initializeFibredSurfaceMenu = false)
+    public void Initialize(string parameters = null, bool showDeckTransformations = false, bool initializeFibredSurfaceMenu = false)
     {
-        surfaceParameters ??= this.surfaceParameters;
-        var parameters = from s in surfaceParameters.Split(";") select SurfaceParameter.FromString(s);
+        if (parameters != null)
+            this.parameters = parameters;
 
         AbstractSurface abstractSurface;
-        (abstractSurface, fibredSurface) = SurfaceGenerator.CreateSurface(parameters);
+        try
+        {
+            (abstractSurface, fibredSurface) = SurfaceGenerator.CreateSurface(Parameter.FromString(this.parameters));
+        }
+        catch (Exception e)
+        {
+            if (fibredSurfaceMenu != null)
+                fibredSurfaceMenu.HandleError(e.Message);
+            return;
+        }
         
         Initialize(abstractSurface, showDeckTransformations, asynchronous: false, OnDone: initializeFibredSurfaceMenu ? () => InitializeFibredSurfaceMenu(fibredSurface) : (Action) null);
 
@@ -245,8 +308,16 @@ public class MainMenu: MonoBehaviour
             //     //         );
             // }
         }
-        
-        
+
+        foreach (var menu in surfaceMenus.ToArray())
+        {
+            var deinitializeCoroutine = menu.DeinitializeCoroutine();
+            while (deinitializeCoroutine.MoveNext()) 
+                yield return null;
+            Destroy(menu.gameObject);
+            surfaceMenus.Remove(menu);
+            yield return null;
+        }
            
         var gameObject = Instantiate(surfaceMenuPrefab, transform);
         var surfaceMenu = gameObject.GetComponentInChildren<SurfaceMenu>();

@@ -80,9 +80,11 @@ public abstract partial class Curve : ITransformable<Curve> // even IDrawnsforma
     }
 
     public virtual IEnumerable<(string, bool)> SideCrossingWord =>
-        from p in VisualJumpPoints
-        let side = p.Item2.side
-        select (((IDrawable) side).ColorfulName, side.Surface is ModelSurface surface && !surface.sides.Contains(side)); // this is a bit hacky. One should rather save this in form of the (inverse) marking into the strips, i.e. for each strip save the word in the "original" graph that its embedding isotopes to, which is equivalent to the Side crossing word, because the "original" graph is the dual of the model surface sides (not exactly -> todo) 
+        VisualJumpPoints.Select(p =>
+        {
+            var side = p.Item2.side;
+            return (((IDrawable) side).ColorfulName, side.Surface is ModelSurface surface && !surface.sides.Contains(side));
+        }); // this is a bit hacky. One should rather save this in form of the (inverse) marking into the strips, i.e. for each strip save the word in the "original" graph that its embedding isotopes to, which is equivalent to the Side crossing word, because the "original" graph is the dual of the model surface sides (not exactly -> todo) 
 
     public virtual Point this[float t] => ValueAt(t);
 

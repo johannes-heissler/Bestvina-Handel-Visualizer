@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 
-public abstract class EdgePath : IReadOnlyList<Strip>
+public abstract class EdgePath : IReadOnlyList<Strip>, IEquatable<EdgePath>
 {
     public static readonly EdgePath Empty = new NormalEdgePath();
 
@@ -192,7 +192,7 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             if (!stripDict.TryGetValue(currentlyReadName, out lastStrip))
             {
                 if (!definitions.TryGetValue(currentlyReadName, out var lastNamedEdgePath))
-                    throw new ArgumentException($"Unknown strip {currentlyReadName} in your input at location {i}");
+                    throw new ArgumentException($"Unknown strip {currentlyReadName} in your input at location {i}. Please separate different edges with a space or a *.");
                 PushLastNormalEdgePath();
                 lastThing = lastNamedEdgePath;
             }
@@ -370,6 +370,14 @@ public abstract class EdgePath : IReadOnlyList<Strip>
             currentlyReadNormalEdgePath.Clear();
         }
     }
+
+    public bool Equals(EdgePath other) => this.SequenceEqual(other);
+
+    public override bool Equals(object obj) => ReferenceEquals(this, obj) || obj is EdgePath other && Equals(other);
+
+    public static bool operator ==(EdgePath left, EdgePath right) => Equals(left, right);
+
+    public static bool operator !=(EdgePath left, EdgePath right) => !Equals(left, right);
 }
 
 public class NamedEdgePath : EdgePath

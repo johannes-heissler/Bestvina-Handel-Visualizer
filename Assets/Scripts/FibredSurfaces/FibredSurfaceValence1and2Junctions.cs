@@ -39,10 +39,11 @@ public partial class FibredSurface
     }
 
     public IEnumerable<Junction> GetValenceTwoJunctions() =>
-        from vertex in graph.Vertices 
-        let star = Star(vertex)
-        where star.Count() == 2 && !star.First().Equals(star.Last().Reversed()) // no self-edge
-        select vertex;
+        graph.Vertices.Where(vertex =>
+        {
+            var star = Star(vertex);
+            return star.Count() == 2 && !star.First().Equals(star.Last().Reversed()); // no self-edge
+        });
 
     public AlgorithmSuggestion ValenceTwoSuggestion()
     {

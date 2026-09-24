@@ -7,7 +7,7 @@ using Vector3 = UnityEngine.Vector3;
 
 public abstract partial class Point : IEquatable<Point>, ITransformable<Point>
 {
-    public virtual GeodesicSurface Surface => ModelSurface.BaseGeometrySurfaces[GeometryType.Flat];
+    public virtual GeodesicSurface Surface => ModelSurface.baseGeometrySurfaces[GeometryType.Flat];
     public virtual Vector3 Position => Positions.First();
     public abstract IEnumerable<Vector3> Positions { get; }
     public virtual Vector3 PassThrough(int fromPositionIndex, int toPositionIndex, Vector3 direction) => direction;

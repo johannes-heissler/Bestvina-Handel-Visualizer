@@ -413,7 +413,7 @@ public class PushingPath : IPatchedDrawnsformable
 
         bool followingLeft = startLeft;
 
-        Variable punctureDistanceM = new Variable($"M = Distance of puncture to the corner at the beginning of {edgePath.First()}", float.MaxValue);
+        Variable punctureDistanceM = new Variable($"M = Distance of puncture to the corner at the beginning of {edgePath.First()}", float.PositiveInfinity); // maxvalue? These values should only be compared, no arithmetic
         Variable currentDistanceToFollowedStrip = punctureDistanceM;
         // variables.Add(currentDistanceToFollowedStrip);
 

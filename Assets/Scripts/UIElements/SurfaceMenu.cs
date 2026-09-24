@@ -30,6 +30,7 @@ public class SurfaceMenu: MonoBehaviour
     private RectTransform canvas;
 
     private readonly Dictionary<string, SurfaceVisualizer> visualizers = new();
+    private readonly Dictionary<string, GameObject> visualizerGameObjects = new();
 
     private SurfaceMenu nextMenu, lastMenu;
     private Dictionary<string, Homeomorphism> forwardHomeos = new();
@@ -163,6 +164,7 @@ public class SurfaceMenu: MonoBehaviour
             float orthographicNormalization= 1f / orthographicSize / orthographicSize;
             
             visualizers.Add(drawingSurfaceName, surfaceVisualizer);
+            visualizerGameObjects.Add(drawingSurfaceName, surfaceVisualizerGameObject);
             surfaceVisualizer.MouseEvent += 
                 (location, button) => {
                     if (location is null)
@@ -402,4 +404,19 @@ public class SurfaceMenu: MonoBehaviour
     public (IDrawnsformable, string) GetCurve(string name) => currentStuffShown.FirstOrDefault(
         c => c.Item1 is Curve
     );
+
+    public IEnumerator DeinitializeCoroutine() // TODO! DOES NOT RESET THE CAMERA MANAGER AND THE MAIN MENU'S UIMOVED EVENT
+    {
+        foreach (var (stuff, surfaceName) in currentStuffShown.ToArray())
+        {
+            Display(stuff, surfaceName, remove: true, propagateBackwards: false, propagateForwards: false, propagateToDrawingSurfaces: false);
+            yield return null;
+        }
+
+        foreach (var visualizerGameObject in visualizerGameObjects.Values.ToArray())
+        {
+            Destroy(visualizerGameObject);
+            yield return null;
+        }
+    }
 }

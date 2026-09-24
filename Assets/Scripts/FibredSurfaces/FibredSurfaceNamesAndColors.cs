@@ -5,23 +5,26 @@ using UnityEngine;
 public partial class FibredSurface
 {
 
-    static readonly List<string> edgeNames = new()
+    public static readonly IEnumerable<string> edgeNames = new[]
     {
         "a", "b", "c", "d", /*"e", "f", "g",*/ "x", "y", "z", "u", "h", "i", "j", "k", "l", "m", "n", "o",
         "α", "β", "γ", "δ", "ε", "ζ", "θ", "κ", "λ", "μ", "ξ", "π", "ρ", "σ", "τ", "φ", "ψ", "ω",
-    };
+    }.Concat(from i in Enumerable.Range(1, 1000) select $"e{i}");
 
-    static readonly List<string> vertexNames = new()
+    public static readonly IEnumerable<string> vertexNames = new[]
     {
         "v", "w", "p", "q", "r", "s", "t",
-    };
+    }.Concat(from i in Enumerable.Range(1, 1000) select $"v{i}");
     
-    static readonly List<Color> edgeColors = Curve.colors;
+    public static readonly IReadOnlyList<Color> edgeColors = Curve.colors;
 
-    static readonly List<Color> vertexColors = new()
+    public static readonly IReadOnlyList<Color> vertexColors = new Color[]
     {
-        Color.black, new Color32(26, 105, 58, 255), new Color32(122, 36, 0, 255),
-        new Color(0.3f, 0.3f, 0.3f), new Color32(50,6,99, 255)
+        Color.black,
+        new Color32(26, 105, 58, 255),
+        new Color32(122, 36, 0, 255),
+        new Color(0.3f, 0.3f, 0.3f), 
+        new Color32(50,6,99, 255)
     };
 
 
@@ -36,7 +39,7 @@ public partial class FibredSurface
     public string NextEdgeName()
     {
         UpdateUsedEdgeNames();
-        return edgeNames.Concat(from i in Enumerable.Range(1, 1000) select $"e{i}").First(
+        return edgeNames.First(
             name => !usedEdgeNames.Contains(name)
         );
     }
@@ -51,7 +54,7 @@ public partial class FibredSurface
     public string NextVertexName()
     {
         var usedVertexNames = graph.Vertices.Select(vertex => vertex.Name).ToHashSet();
-        return vertexNames.Concat(from i in Enumerable.Range(1, 1000) select $"v{i}").First(
+        return vertexNames.First(
             name => !usedVertexNames.Contains(name)    
         );
     }
@@ -73,7 +76,7 @@ public partial class FibredSurface
         return leastUsedColor;
     }
 
-    Color NextVertexColor()
+    public Color NextVertexColor()
     {
         var colorUsage = vertexColors.ToDictionary(c => c, c => 0);
         foreach (var junction in graph.Vertices)

@@ -212,27 +212,27 @@ public class HyperbolicGeodesicSegment : Curve
         // This is the Möbius transformation that sends p to i and q to the imaginary axis.
         bool AssignIsometry(bool alternative)
         {
-            if (w.Magnitude < 1e-6)
+            if (Math.Abs(w.Imaginary) < 1e-6) // p.Real = q.Real
             {
                 if (alternative)
                 {
                     a = 0;
-                    b = -p.Imaginary;
                     c = 1;
+                    b = -p.Imaginary;
                     d = -p.Real;
                 }
                 else
                 {
                     a = 1;
-                    b = -p.Real;
                     c = 0;
+                    b = -p.Real;
                     d = p.Imaginary;
                 }
             }
             else
             {
-                a = alternative ? - w.Real + w.Magnitude : - w.Real - w.Magnitude;
-                c = 2 * p.Imaginary * (q.Real - p.Real);
+                a = alternative ? w.Real + w.Magnitude : w.Real - w.Magnitude;
+                c = w.Imaginary; // 2 * p.Imaginary * (p.Real - q.Real);
                 b = - a * p.Real - c * p.Imaginary;
                 d = a * p.Imaginary - c * p.Real;
 

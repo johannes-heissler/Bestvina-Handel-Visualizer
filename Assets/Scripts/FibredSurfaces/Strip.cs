@@ -87,13 +87,13 @@ public class UnorientedStrip : Strip
     public override float OrderIndexEnd { get; set; }
     public override float OrderIndexStart { get; set; }
 
-    public UnorientedStrip(Curve curve, Junction source, Junction target, EdgePath edgePath,
-        FibredSurface fibredSurface, float orderIndexStart, float orderIndexEnd, bool newColor = false, bool newName = false, bool addToGraph = false) : base(fibredSurface)
+    public UnorientedStrip([NotNull] Curve curve, [NotNull] Junction source, [NotNull] Junction target, EdgePath edgePath,
+        [NotNull] FibredSurface fibredSurface, float orderIndexStart, float orderIndexEnd, bool newColor = false, bool newName = false, bool addToGraph = false) : base(fibredSurface)
     {
         Curve = curve;
         this.source = source;
         this.target = target;
-        EdgePath = edgePath;
+        EdgePath = edgePath ?? new NormalEdgePath(this);
         this.OrderIndexEnd = orderIndexEnd;
         this.OrderIndexStart = orderIndexStart;
         if (newColor)

@@ -22,7 +22,7 @@ public partial class Curve: IDrawnsformable<Curve>
 
     protected virtual Color DefaultColor => colors[id % colors.Count];
 
-    public static readonly List<Color> colors = new()
+    public static readonly IReadOnlyList<Color> colors = new Color[]
     {
         new Color32(20, 71, 255, 255),
         new Color32(233, 30, 99, 255),

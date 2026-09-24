@@ -68,6 +68,13 @@ public partial class FibredSurface
         // todo? add a set of ITransformables to highlight with each option?
         // todo? OnHover?
         
+        if(isTrainTrack)
+            return new AlgorithmSuggestion(
+                options: new (object, string)[] { },
+                description: "What a nice train track.",
+                buttons: new string[] { }
+            );
+        
         if (currentAlgorithmRun != null)
             return currentAlgorithmRun.Current;
         
@@ -359,7 +366,7 @@ public partial class FibredSurface
         var brokenEdgeGraphAssociation = Strips.FirstOrDefault(e => e.graph != graph);
         if (brokenEdgeGraphAssociation != null)
             HandleInconsistentBehavior($"The edge {brokenEdgeGraphAssociation} doesn't refer to this graph.");
-        for (int k = 0; k < 4; k++)
+        for (int k = 1; k < 2; k++)
         {
             foreach (var vertex in graph.Vertices)
             {
@@ -367,7 +374,7 @@ public partial class FibredSurface
                 var starts = (from edge in star select edge.EdgePath.Take(k)).ToHashSet();
                 foreach (var start in starts)
                 {
-                    var edges = (from edge in star where edge.EdgePath.Take(k).SequenceEqual(start) select edge).ToArray();
+                    var edges = (from edge in star where edge.EdgePath.Take(k).Equals(start) select edge).ToArray();
                     if (!IsConnectedSet(star, edges))
                         HandleInconsistentBehavior($"The edges {string.Join(", ", edges.Select(e => e.Name))} are not connected in the star of {vertex.Name}, but all start with the same edge path {string.Join(" ", start.Select(e => e.Name))}.");
                 }

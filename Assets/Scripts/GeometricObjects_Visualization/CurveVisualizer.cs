@@ -66,21 +66,25 @@ public class CurveVisualizer : MonoBehaviour
             float newResolution = length / pointsCount;
             float start = boundaryTimes[i] + ε;
             
-            var points =
-                from index in Enumerable.Range(0, pointsCount + 1)
-                let t = start + index * newResolution
-                let tangentSpace = curve.BasisAt(t)
-                let basis = tangentSpace.basis
-                let position = tangentSpace.point.Position * scale + offset
-                let tangentVector = basis.a * scale * newResolution / 3 // /2 would be the guess for the position, /
-                let normalVector = basis.c.normalized * scale
-                let positionOutside = position + normalVector * outwardOffset
-                select new SplinePoint(positionOutside,
+            // Plain loop instead of a LINQ query: chained Selects over anonymous types (from the `let` clauses)
+            // cause "indirect call signature mismatch" under IL2CPP full generic sharing on WebGL.
+            var points = new SplinePoint[pointsCount + 1];
+            for (int index = 0; index <= pointsCount; index++)
+            {
+                float t = start + index * newResolution;
+                var tangentSpace = curve.BasisAt(t);
+                var basis = tangentSpace.basis;
+                var position = tangentSpace.point.Position * scale + offset;
+                var tangentVector = basis.a * scale * newResolution / 3; // /2 would be the guess for the position, /
+                var normalVector = basis.c.normalized * scale;
+                var positionOutside = position + normalVector * outwardOffset;
+                points[index] = new SplinePoint(positionOutside,
                     positionOutside - tangentVector,
                     normalVector,
                     1f,
                     curve.Color);
-            splineComputer.SetPoints(points.ToArray(), SplineComputer.Space.Local);
+            }
+            splineComputer.SetPoints(points, SplineComputer.Space.Local);
 
             splineComputer.GetComponent<Renderer>().material.color = curve.Color;
             var sizeModifier = splineComputer.GetComponent<MeshGenerator>().sizeModifier;

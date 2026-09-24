@@ -71,7 +71,7 @@ public class Kamera : MonoBehaviour
         if (!mouseInViewport) return;
         
         // Zoom by mouse wheel
-        float newOrthographicSize = Cam.orthographicSize - Input.GetAxis("Mouse ScrollWheel") * wheelSensitivity;
+        float newOrthographicSize = Cam.orthographicSize * MathF.Exp( - Input.GetAxis("Mouse ScrollWheel") * wheelSensitivity );
         SetOrthographicSize(newOrthographicSize);
 
         // Zoom by finger pinch is broken on WebGL. Zoom will be deactivated on mobile devices.
@@ -111,14 +111,6 @@ public class Kamera : MonoBehaviour
         if (Input.touchCount == 1 && !pinching) {
             Touch touchZero = Input.GetTouch(0);
             Move(touchZero.deltaPosition);
-            if (touchZero.phase == TouchPhase.Moved) {
-                float h = touchZero.deltaPosition.x * rotationSpeed;
-                float v = touchZero.deltaPosition.y * rotationSpeed;
-
-                // Create a rotation for each axis and multiply them together
-                Quaternion rotation = Quaternion.Euler(-v, h, 0);
-                transform.rotation *= rotation;
-            }
         }
     }
 
