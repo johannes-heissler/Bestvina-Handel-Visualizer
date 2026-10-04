@@ -6,8 +6,10 @@ This allows one to study the mapping class group combinatorially while at the sa
 The previous algorithms didn't really allow you to see exactly what is happening or give you the choice that is left in this "algorithm".
 This program gives all of that to you.
 
+Currently hosted under [graphicayley.de](https://graphicayley.de/bestvina-handel)
+
 ## New version
-The following repo makes this obsolete: [https://github.com/johannes-heissler/bestvina-handel-web]
+The following repo makes this obsolete: [bestvina-handel-web](https://github.com/johannes-heissler/bestvina-handel-web), hosted on [Github Pages](https://johannes-heissler.github.io/bestvina-handel-web/)
 
 ## Screenshots
 Just enter the map as it acts on the graph and you can click through all steps, even returning to see what a different choice might have given you.
